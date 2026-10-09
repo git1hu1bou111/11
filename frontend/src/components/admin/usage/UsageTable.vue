@@ -145,6 +145,30 @@
           </span>
         </template>
 
+        <template #cell-cache_hit_rate="{ row }">
+          <div class="flex flex-col items-start gap-1">
+            <span
+              v-if="formatCacheHitRate(row)"
+              data-testid="cache-hit-rate-badge"
+              class="inline-flex items-center gap-1 rounded-md border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-medium leading-tight text-violet-600 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-400"
+              :title="t('usage.cacheHitRateHint')"
+            >
+              <Icon name="database" size="xs" />
+              {{ t('usage.cacheRate') }} {{ formatCacheHitRate(row) }}
+            </span>
+            <span
+              v-if="formatEffectiveOutputRate(row)"
+              data-testid="output-rate-badge"
+              class="inline-flex items-center gap-1 rounded-md border border-sky-200 bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium leading-tight text-sky-600 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-400"
+              :title="t('usage.tpsRateHint')"
+            >
+              <Icon name="bolt" size="xs" />
+              {{ t('usage.tpsLabel') }}: {{ formatEffectiveOutputRate(row) }}
+            </span>
+            <span v-if="!formatCacheHitRate(row) && !formatEffectiveOutputRate(row)" class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          </div>
+        </template>
+
         <template #cell-tokens="{ row }">
           <!-- 图片生成请求（仅按次计费时显示图片格式） -->
           <div v-if="isImageUsage(row)" class="flex items-center gap-1.5">
@@ -573,6 +597,7 @@ import {
   textInputTokens,
   hasImageInputCost,
 } from '@/utils/imageUsage'
+import { formatCacheHitRate, formatEffectiveOutputRate } from '@/utils/usageRateMetrics'
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
 function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null }): number {
