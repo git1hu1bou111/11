@@ -420,8 +420,6 @@ export default {
     cacheHitRate: '缓存命中率',
     cacheRate: '缓存',
     cacheHitRateHint: '缓存读取 ÷（普通输入 + 缓存读取 + 缓存写入）。',
-    tpsLabel: 'TPS',
-    tpsRateHint: '输出 Token ÷（总耗时 − 首字延迟），单位 t/s。',
     inputTokenPrice: '输入单价',
     outputTokenPrice: '输出单价',
     perMillionTokens: '/ 1M Token',

@@ -415,8 +415,6 @@ export default {
     cacheHitRate: 'Cache hit rate',
     cacheRate: 'Cache',
     cacheHitRateHint: 'Cache reads divided by plain input plus cache reads and cache writes.',
-    tpsLabel: 'TPS',
-    tpsRateHint: 'Output tokens divided by duration minus first-token latency, in t/s.',
     inputTokenPrice: 'Input price',
     outputTokenPrice: 'Output price',
     perMillionTokens: '/ 1M tokens',
