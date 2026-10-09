@@ -189,15 +189,17 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
+			legacyRetryable := isGrokAPIKeyGatewayTransientRetryableOnSameAccount(account, resp.StatusCode)
 			return nil, &UpstreamFailoverError{
-				StatusCode:               resp.StatusCode,
-				ResponseBody:             respBody,
-				ResponseHeaders:          resp.Header.Clone(),
-				RetryableOnSameAccount:   retryable,
-				RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
-				SameAccountRetryDelay:    retryDelay,
-				SameAccountRetryDeadline: retryDeadline,
-				SameAccountRetryMax:      retryMax,
+				StatusCode:                resp.StatusCode,
+				ResponseBody:              respBody,
+				ResponseHeaders:           resp.Header.Clone(),
+				RetryableOnSameAccount:    retryable || legacyRetryable,
+				RequestScopedTransient:    (retryable || legacyRetryable) && resp.StatusCode == http.StatusTooManyRequests,
+				SkipAccountTempUnschedule: true,
+				SameAccountRetryDelay:     retryDelay,
+				SameAccountRetryDeadline:  retryDeadline,
+				SameAccountRetryMax:       retryMax,
 			}
 		}
 		return s.handleErrorResponse(ctx, resp, c, account, patchedBody, upstreamModel)
@@ -1436,15 +1438,17 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 		s.handleGrokAccountUpstreamError(withGrokTeamRateLimitModel(ctx, grokComposerImageBridgeVisionModel), account, resp.StatusCode, resp.Header, respBody)
 		if s.shouldFailoverGrokUpstreamError(resp.StatusCode, respBody) {
 			retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, respBody)
+			legacyRetryable := isGrokAPIKeyGatewayTransientRetryableOnSameAccount(account, resp.StatusCode)
 			return "", OpenAIUsage{}, &UpstreamFailoverError{
-				StatusCode:               resp.StatusCode,
-				ResponseBody:             respBody,
-				ResponseHeaders:          resp.Header.Clone(),
-				RetryableOnSameAccount:   retryable,
-				RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
-				SameAccountRetryDelay:    retryDelay,
-				SameAccountRetryDeadline: retryDeadline,
-				SameAccountRetryMax:      retryMax,
+				StatusCode:                resp.StatusCode,
+				ResponseBody:              respBody,
+				ResponseHeaders:           resp.Header.Clone(),
+				RetryableOnSameAccount:    retryable || legacyRetryable,
+				RequestScopedTransient:    (retryable || legacyRetryable) && resp.StatusCode == http.StatusTooManyRequests,
+				SkipAccountTempUnschedule: true,
+				SameAccountRetryDelay:     retryDelay,
+				SameAccountRetryDeadline:  retryDeadline,
+				SameAccountRetryMax:       retryMax,
 			}
 		}
 		return "", OpenAIUsage{}, fmt.Errorf("grok composer image bridge upstream error: %s", upstreamMsg)
@@ -1877,9 +1881,6 @@ func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Accou
 	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, now)
 
 	runtimeUntil := resetAt
-	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(runtimeUntil) {
-		runtimeUntil = *account.TempUnschedulableUntil
-	}
 	s.BlockAccountScheduling(account, runtimeUntil, "429")
 	persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
 
@@ -2008,11 +2009,34 @@ func persistGrokTransientModelCooldown(account *Account, decision GrokUpstreamFa
 	return true
 }
 
+func isGrokAPIKeyGatewayTransientStatus(account *Account, statusCode int) bool {
+	if account == nil || account.Platform != PlatformGrok || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	enabled, _ := account.Credentials["grok_gateway_transient_errors_do_not_block"].(bool)
+	if !enabled {
+		return false
+	}
+	switch statusCode {
+	case http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+func isGrokAPIKeyGatewayTransientRetryableOnSameAccount(account *Account, statusCode int) bool {
+	if account == nil || !account.IsPoolMode() {
+		return false
+	}
+	return account.IsPoolModeRetryableStatus(statusCode) || isGrokAPIKeyGatewayTransientStatus(account, statusCode)
+}
+
 func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Context, account *Account, statusCode int, headers http.Header, responseBody []byte) {
 	if s == nil || account == nil {
 		return
 	}
-	if isGrokContentPolicyRejection(statusCode, responseBody) {
+	if isGrokAPIKeyGatewayTransientStatus(account, statusCode) || isGrokContentPolicyRejection(statusCode, responseBody) {
 		return
 	}
 	now := time.Now()
@@ -2103,7 +2127,10 @@ func isGrokSpendingLimitError(responseBody []byte) bool {
 }
 
 func (s *OpenAIGatewayService) tempUnscheduleGrok(ctx context.Context, account *Account, cooldown time.Duration, reason string) {
-	if s == nil || account == nil {
+	if s == nil || account == nil || account.Platform == PlatformGrok {
+		if account != nil && account.Platform == PlatformGrok {
+			slog.Info("grok_account_temp_unschedule_skipped", "account_id", account.ID, "reason", reason, "cooldown", cooldown)
+		}
 		return
 	}
 	until := time.Now().Add(cooldown)

@@ -3027,42 +3027,27 @@ func TestHandleGrokAccountUpstreamErrorSpendingLimitUsesRecoverableProbeCool(t *
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
-func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *testing.T) {
+func TestHandleGrokAccountUpstreamErrorNeverTempUnschedulesNonRateLimitStates(t *testing.T) {
 	tests := []struct {
-		name            string
-		status          int
-		headers         http.Header
-		wantReason      string
-		wantMinCooldown time.Duration
-		wantMaxCooldown time.Duration
+		name    string
+		status  int
+		headers http.Header
 	}{
 		{
-			name:            "unauthorized reauth",
-			status:          http.StatusUnauthorized,
-			wantReason:      "grok credentials unauthorized",
-			wantMinCooldown: 10*time.Minute - time.Second,
-			wantMaxCooldown: 10*time.Minute + time.Second,
+			name:   "unauthorized reauth",
+			status: http.StatusUnauthorized,
 		},
 		{
-			name:            "forbidden entitlement",
-			status:          http.StatusForbidden,
-			wantReason:      "grok access or entitlement denied",
-			wantMinCooldown: 30*time.Minute - time.Second,
-			wantMaxCooldown: 30*time.Minute + time.Second,
+			name:   "forbidden entitlement",
+			status: http.StatusForbidden,
 		},
 		{
-			name:            "payment required",
-			status:          http.StatusPaymentRequired,
-			wantReason:      "grok payment required",
-			wantMinCooldown: 30*time.Minute - time.Second,
-			wantMaxCooldown: 30*time.Minute + time.Second,
+			name:   "payment required",
+			status: http.StatusPaymentRequired,
 		},
 		{
-			name:            "upstream temporary error",
-			status:          http.StatusInternalServerError,
-			wantReason:      "grok upstream temporary error",
-			wantMinCooldown: 2*time.Minute - time.Second,
-			wantMaxCooldown: 2*time.Minute + time.Second,
+			name:   "upstream temporary error",
+			status: http.StatusInternalServerError,
 		},
 	}
 
@@ -3071,17 +3056,13 @@ func TestHandleGrokAccountUpstreamErrorTempUnschedulesNonRateLimitStates(t *test
 			account := &Account{ID: 61, Platform: PlatformGrok, Type: AccountTypeOAuth}
 			repo := &grokQuotaAccountRepo{}
 			svc := &OpenAIGatewayService{accountRepo: repo}
-			before := time.Now()
-
 			svc.handleGrokAccountUpstreamError(context.Background(), account, tt.status, tt.headers, nil)
 
-			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-			require.Equal(t, 1, repo.tempUnschedCalls)
+			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.Zero(t, repo.tempUnschedCalls)
 			require.Zero(t, repo.rateLimitedCalls)
-			require.Equal(t, account.ID, repo.lastTempUnschedID)
-			require.Equal(t, tt.wantReason, repo.lastTempUnschedReason)
-			require.True(t, repo.lastTempUnschedUntil.After(before.Add(tt.wantMinCooldown)))
-			require.True(t, repo.lastTempUnschedUntil.Before(before.Add(tt.wantMaxCooldown)))
+			require.Nil(t, account.TempUnschedulableUntil)
+			require.Empty(t, account.TempUnschedulableReason)
 		})
 	}
 }
@@ -3128,15 +3109,12 @@ func TestHandleGrokAccountUpstreamError5xxRespectsPoolMode(t *testing.T) {
 		account := &Account{ID: 612, Platform: PlatformGrok, Type: AccountTypeAPIKey}
 		repo := &grokQuotaAccountRepo{}
 		svc := &OpenAIGatewayService{accountRepo: repo}
-		before := time.Now()
-
 		svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusBadGateway, nil, nil)
 
-		require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-		require.Equal(t, 1, repo.tempUnschedCalls)
-		require.Equal(t, account.ID, repo.lastTempUnschedID)
-		require.Equal(t, "grok upstream temporary error", repo.lastTempUnschedReason)
-		require.WithinDuration(t, before.Add(2*time.Minute), repo.lastTempUnschedUntil, time.Second)
+		require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		require.Zero(t, repo.tempUnschedCalls)
+		require.Nil(t, account.TempUnschedulableUntil)
+		require.Empty(t, account.TempUnschedulableReason)
 	})
 }
 
@@ -3153,6 +3131,130 @@ func TestHandleGrokAccountUpstreamError429SetsRateLimitedFromRetryAfter(t *testi
 	require.Equal(t, account.ID, repo.lastRateLimitedID)
 	require.WithinDuration(t, before.Add(45*time.Second), repo.lastRateLimitResetAt, time.Second)
 	require.Zero(t, repo.tempUnschedCalls)
+}
+
+func TestHandleGrokAPIKeyGatewayTransientStatusDoesNotWriteAccountSchedulingState(t *testing.T) {
+	for _, statusCode := range []int{
+		http.StatusTooManyRequests,
+		http.StatusBadGateway,
+		http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout,
+	} {
+		t.Run(http.StatusText(statusCode), func(t *testing.T) {
+			account := &Account{
+				ID:       63,
+				Platform: PlatformGrok,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"grok_gateway_transient_errors_do_not_block": true,
+				},
+			}
+			repo := &grokQuotaAccountRepo{}
+			svc := &OpenAIGatewayService{
+				accountRepo:      repo,
+				rateLimitService: &RateLimitService{accountRepo: repo},
+			}
+
+			svc.handleGrokAccountUpstreamError(
+				context.Background(),
+				account,
+				statusCode,
+				http.Header{"Retry-After": []string{"120"}},
+				nil,
+			)
+			shouldDisable := svc.handleOpenAIAccountUpstreamError(
+				context.Background(),
+				account,
+				statusCode,
+				http.Header{"Retry-After": []string{"120"}},
+				nil,
+			)
+
+			require.False(t, shouldDisable)
+			require.Zero(t, repo.updateCalls)
+			require.Zero(t, repo.tempUnschedCalls)
+			require.Zero(t, repo.rateLimitedCalls)
+			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		})
+	}
+}
+
+func TestGrokAPIKeyGatewayTransientStatusIsolationRequiresExplicitAccountFlag(t *testing.T) {
+	marked := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"grok_gateway_transient_errors_do_not_block": true,
+		},
+	}
+
+	require.True(t, isGrokAPIKeyGatewayTransientStatus(marked, http.StatusTooManyRequests))
+	require.True(t, isGrokAPIKeyGatewayTransientStatus(marked, http.StatusBadGateway))
+	require.True(t, isGrokAPIKeyGatewayTransientStatus(marked, http.StatusServiceUnavailable))
+	require.True(t, isGrokAPIKeyGatewayTransientStatus(marked, http.StatusGatewayTimeout))
+	require.False(t, isGrokAPIKeyGatewayTransientStatus(
+		&Account{Platform: PlatformGrok, Type: AccountTypeAPIKey},
+		http.StatusTooManyRequests,
+	))
+	require.False(t, isGrokAPIKeyGatewayTransientStatus(
+		&Account{
+			Platform: PlatformGrok,
+			Type:     AccountTypeOAuth,
+			Credentials: map[string]any{
+				"grok_gateway_transient_errors_do_not_block": true,
+			},
+		},
+		http.StatusTooManyRequests,
+	))
+}
+
+func TestHandleOpenAIAccountUpstreamError_GrokSkipsGenericRuntimeQuarantine(t *testing.T) {
+	for _, tt := range []struct {
+		name   string
+		status int
+		body   []byte
+	}{
+		{name: "unauthorized", status: http.StatusUnauthorized},
+		{name: "upstream 5xx", status: http.StatusBadGateway},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			account := &Account{ID: 6401, Platform: PlatformGrok, Type: AccountTypeOAuth}
+			repo := &grokQuotaAccountRepo{}
+			svc := &OpenAIGatewayService{accountRepo: repo}
+
+			shouldFailover := svc.handleOpenAIAccountUpstreamError(
+				context.Background(), account, tt.status, http.Header{}, tt.body, "grok-4.5",
+			)
+
+			require.True(t, shouldFailover)
+			require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+			require.Zero(t, repo.tempUnschedCalls)
+			require.Nil(t, account.TempUnschedulableUntil)
+		})
+	}
+}
+
+func TestGrokAPIKeyGatewayTransientSameAccountRetryRequiresPoolAndExplicitFlag(t *testing.T) {
+	markedPool := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"pool_mode":                                  true,
+			"pool_mode_retry_status_codes":               []int{401, 403, 429, 502, 503},
+			"grok_gateway_transient_errors_do_not_block": true,
+		},
+	}
+
+	require.True(t, isGrokAPIKeyGatewayTransientRetryableOnSameAccount(markedPool, http.StatusBadGateway))
+	require.True(t, isGrokAPIKeyGatewayTransientRetryableOnSameAccount(markedPool, http.StatusServiceUnavailable))
+	require.True(t, isGrokAPIKeyGatewayTransientRetryableOnSameAccount(markedPool, http.StatusGatewayTimeout))
+
+	markedPool.Credentials["pool_mode"] = false
+	require.False(t, isGrokAPIKeyGatewayTransientRetryableOnSameAccount(markedPool, http.StatusBadGateway))
+
+	markedPool.Credentials["pool_mode"] = true
+	delete(markedPool.Credentials, "grok_gateway_transient_errors_do_not_block")
+	require.False(t, isGrokAPIKeyGatewayTransientRetryableOnSameAccount(markedPool, http.StatusBadGateway))
 }
 
 func TestHandleGrokAccountUpstreamError429PoolModeKeepsSchedulingState(t *testing.T) {
@@ -3188,8 +3290,8 @@ func TestHandleGrokAccountUpstreamError402RecoversAfterCooldownExpiry(t *testing
 	svc := &OpenAIGatewayService{accountRepo: repo}
 
 	svc.handleGrokAccountUpstreamError(context.Background(), account, http.StatusPaymentRequired, nil, nil)
-	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
-	require.Equal(t, 1, repo.tempUnschedCalls)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.Zero(t, repo.tempUnschedCalls)
 
 	expired := time.Now().Add(-time.Second)
 	account.TempUnschedulableUntil = &expired
@@ -3374,7 +3476,7 @@ func TestHandleGrokAccountUpstreamError429DoesNotShortenExistingPause(t *testing
 	require.True(t, ok)
 	runtimeUntil, ok := value.(time.Time)
 	require.True(t, ok)
-	require.WithinDuration(t, existingUntil, runtimeUntil, time.Second)
+	require.WithinDuration(t, time.Now().Add(45*time.Second), runtimeUntil, time.Second)
 }
 
 func TestUpdateGrokUsageSnapshotExhaustedSuccessBypassesThrottleAndSetsRateLimited(t *testing.T) {

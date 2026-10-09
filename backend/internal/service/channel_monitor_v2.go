@@ -77,9 +77,10 @@ type ChannelMonitorV2Filter struct {
 	Range     string
 	Platforms []string
 	GroupIDs  []int64
-	// AllowedGroupIDs is the authenticated viewer's server-derived group scope.
-	// RestrictGroups distinguishes an ordinary user with no allowed groups from
-	// the unrestricted admin/configured scope represented by an empty slice.
+	// AllowedGroupIDs is the server-derived group scope for an ordinary viewer.
+	// RestrictGroups distinguishes an explicitly restricted viewer with no
+	// allowed groups from the unrestricted administrator/configuration scope
+	// represented by an empty slice.
 	AllowedGroupIDs []int64
 	RestrictGroups  bool
 	Models          []string
@@ -102,6 +103,7 @@ type ChannelMonitorV2Metric struct {
 	ErrorRate                float64                 `json:"error_rate"`
 	SuccessRate              float64                 `json:"success_rate"`
 	CacheRate                float64                 `json:"cache_rate"`
+	CacheRateWarm            float64                 `json:"cache_rate_warm"`
 	CacheRateNumerator       int64                   `json:"cache_rate_numerator"`
 	CacheRateDenominator     int64                   `json:"cache_rate_denominator"`
 	TTFT                     ChannelMonitorV2Latency `json:"ttft"`
@@ -244,13 +246,14 @@ type ChannelMonitorV2ModelRow struct {
 }
 
 type ChannelMonitorV2MatrixRow struct {
-	Platform  string                       `json:"platform"`
-	GroupID   *int64                       `json:"group_id,omitempty"`
-	GroupName string                       `json:"group_name,omitempty"`
-	Model     string                       `json:"model,omitempty"`
-	Metrics   ChannelMonitorV2Metric       `json:"metrics"`
-	Health    ChannelMonitorV2Health       `json:"health"`
-	Buckets   []ChannelMonitorV2TrendPoint `json:"buckets"`
+	Platform     string                       `json:"platform"`
+	GroupID      *int64                       `json:"group_id,omitempty"`
+	GroupName    string                       `json:"group_name,omitempty"`
+	Model        string                       `json:"model,omitempty"`
+	Metrics      ChannelMonitorV2Metric       `json:"metrics"`
+	Health       ChannelMonitorV2Health       `json:"health"`
+	Buckets      []ChannelMonitorV2TrendPoint `json:"buckets"`
+	Intelligence *IntelligenceUptime          `json:"intelligence,omitempty"`
 }
 
 type ChannelMonitorV2Matrix struct {
@@ -376,9 +379,10 @@ func ChannelMonitorV2BootstrapProgress(now, coveredFrom time.Time, hasData bool)
 }
 
 type ChannelMonitorV2Service struct {
-	repo     ChannelMonitorV2Repository
-	settings channelMonitorRuntimeReader
-	now      func() time.Time
+	repo         ChannelMonitorV2Repository
+	settings     channelMonitorRuntimeReader
+	now          func() time.Time
+	intelligence *ChannelMonitorIntelligence
 }
 
 func NewChannelMonitorV2Service(repo ChannelMonitorV2Repository) *ChannelMonitorV2Service {
@@ -529,6 +533,11 @@ func (s *ChannelMonitorV2Service) Matrix(ctx context.Context, filter ChannelMoni
 	if err != nil {
 		return nil, err
 	}
+	if s.intelligence != nil {
+		if err := s.intelligence.Attach(ctx, matrix, filter); err != nil {
+			return nil, err
+		}
+	}
 	if !admin && matrix != nil {
 		hideTP := s.hideThroughputForViewer(ctx, admin)
 		for i := range matrix.Items {
@@ -648,6 +657,7 @@ func redactChannelMonitorV2Metric(m *ChannelMonitorV2Metric, hideThroughput bool
 	m.TokenCount = 0
 	m.CacheRateNumerator = 0
 	m.CacheRateDenominator = 0
+	m.CacheRateWarm = 0
 	// Latency sample_count is also a volume signal.
 	m.TTFT.SampleCount = 0
 	m.Duration.SampleCount = 0

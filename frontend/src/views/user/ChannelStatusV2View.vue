@@ -269,6 +269,13 @@
         </div>
       </div>
 
+      <section v-if="intelligenceRows.length" class="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div v-for="row in intelligenceRows" :key="row.group_id" class="card p-5">
+          <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ row.group_name }}</h2>
+          <IntelligenceUptime :uptime="row.intelligence" :coverage="matrix?.coverage" />
+        </div>
+      </section>
+
       <section class="card flex min-h-0 flex-col overflow-hidden !rounded-3xl !border-0 shadow-sm ring-1 ring-gray-900/5 dark:!bg-dark-800 dark:ring-dark-700">
         <div class="border-b border-gray-100 px-5 pt-4 dark:border-dark-700 sm:px-6">
           <nav class="tabs w-full max-w-md sm:w-auto" role="tablist" :aria-label="t('channelMonitorV2.tabs.aria')">
@@ -470,6 +477,7 @@ import MetricCell from '@/features/channel-monitor-v2/MetricCell.vue'
 import MonitorRankBadge from '@/features/channel-monitor-v2/MonitorRankBadge.vue'
 import MonitorTrendChart from '@/features/channel-monitor-v2/MonitorTrendChart.vue'
 import RelayPulseMatrix from '@/features/channel-monitor-v2/RelayPulseMatrix.vue'
+import IntelligenceUptime from '@/components/user/monitor/IntelligenceUptime.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -660,6 +668,14 @@ const matrixRows = computed(() => {
   }
   return items
 })
+const intelligenceRows = computed(() => {
+  const seen = new Set<number>()
+  return matrixRows.value.filter(row => {
+    if (row.platform !== 'openai' || !row.group_id || seen.has(row.group_id)) return false
+    seen.add(row.group_id)
+    return true
+  })
+})
 
 function csv(value: unknown) {
   return typeof value === 'string' ? value.split(',').filter(Boolean) : []
@@ -816,7 +832,7 @@ function scheduleAutoRefresh() {
   // Poll faster while first-upgrade bootstrap is filling 90m→30d so the progress bar moves.
   const seconds = bootstrapActive.value
     ? 10
-    : snapshot.value?.config?.refresh_interval_seconds || 300
+    : Math.min(60, snapshot.value?.config?.refresh_interval_seconds || 60)
   autoRefreshTimer = window.setInterval(() => {
     if (!loading.value && !refreshing.value) {
       void reload(true)

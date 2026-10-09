@@ -129,6 +129,11 @@ func TestValidateEasyPayCustomMethods(t *testing.T) {
 			supportedTypes: "alipay,wxpay,ldc",
 		},
 		{
+			name:           "valid dotted BEpusdt upstream type",
+			config:         map[string]string{"customMethods": `[{"type":"usdt_trc20","upstreamType":"usdt.trc20","displayName":"USDT-TRC20"}]`},
+			supportedTypes: "usdt_trc20",
+		},
+		{
 			name:           "upstream type allows periods",
 			config:         map[string]string{"customMethods": `[{"type":"usdt_trc20","upstreamType":"usdt.trc20"}]`},
 			supportedTypes: "alipay,wxpay,usdt_trc20",
@@ -143,7 +148,7 @@ func TestValidateEasyPayCustomMethods(t *testing.T) {
 			name:           "upstream type still rejects slashes",
 			config:         map[string]string{"customMethods": `[{"type":"usdt_trc20","upstreamType":"usdt/trc20"}]`},
 			supportedTypes: "alipay,wxpay,usdt_trc20",
-			wantErr:        "customMethods upstreamType may only contain lowercase letters",
+			wantErr:        "customMethods upstreamType must be dot-separated",
 		},
 		{
 			name:           "malformed custom methods json",
@@ -173,7 +178,13 @@ func TestValidateEasyPayCustomMethods(t *testing.T) {
 			name:           "upstream type must already be lowercase",
 			config:         map[string]string{"customMethods": `[{"type":"ldc","upstreamType":"ALIPAY"}]`},
 			supportedTypes: "alipay,wxpay,ldc",
-			wantErr:        "customMethods upstreamType may only contain lowercase letters",
+			wantErr:        "customMethods upstreamType must be dot-separated",
+		},
+		{
+			name:           "upstream type rejects empty dot segments",
+			config:         map[string]string{"customMethods": `[{"type":"usdt_trc20","upstreamType":"usdt..trc20"}]`},
+			supportedTypes: "usdt_trc20",
+			wantErr:        "customMethods upstreamType must be dot-separated",
 		},
 		{
 			name:           "custom type uses alipay prefix",

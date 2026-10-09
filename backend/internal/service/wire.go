@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"os"
 	"time"
 
@@ -976,6 +977,7 @@ var ProviderSet = wire.NewSet(
 	NewChannelMonitorQuotaFetcher,
 	ProvideChannelMonitorV2Service,
 	ProvideChannelMonitorV2Aggregator,
+	ProvideChannelMonitorIntelligence,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
 )
@@ -1009,7 +1011,7 @@ func ProvidePaymentService(entClient *dbent.Client, registry *payment.Registry, 
 
 // ProvidePaymentOrderExpiryService creates and starts PaymentOrderExpiryService.
 func ProvidePaymentOrderExpiryService(paymentSvc *PaymentService, lockCache LeaderLockCache, db *sql.DB) *PaymentOrderExpiryService {
-	svc := NewPaymentOrderExpiryService(paymentSvc, 60*time.Second)
+	svc := NewPaymentOrderExpiryService(paymentSvc, 20*time.Second)
 	svc.SetLeaderLock(lockCache, db)
 	svc.Start()
 	return svc
@@ -1053,9 +1055,23 @@ func ProvideChannelMonitorRunner(
 
 // ProvideChannelMonitorV2Service wires settings for user-facing privacy flags
 // (e.g. hide RPM/TPM throughput).
-func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService) *ChannelMonitorV2Service {
+func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingService *SettingService, intelligence *ChannelMonitorIntelligence) *ChannelMonitorV2Service {
 	svc := NewChannelMonitorV2Service(repo)
 	svc.SetRuntimeReader(settingService)
+	svc.intelligence = intelligence
+	return svc
+}
+
+func ProvideChannelMonitorIntelligence(repo IntelligenceRepository, v2 ChannelMonitorV2Repository, keys *APIKeyService, settings *SettingService, db *sql.DB, cfg *config.Config, accountTest *AccountTestService) *ChannelMonitorIntelligence {
+	endpoint := fmt.Sprintf("http://127.0.0.1:%d", cfg.Server.Port)
+	if value := os.Getenv("CHANNEL_MONITOR_INTELLIGENCE_ENDPOINT"); value != "" {
+		endpoint = value
+	}
+	svc := NewChannelMonitorIntelligence(repo, v2, keys, settings, db, endpoint)
+	svc.accountTest = accountTest
+	if os.Getenv("CHANNEL_MONITOR_INTELLIGENCE_DISABLED") != "1" {
+		svc.Start()
+	}
 	return svc
 }
 

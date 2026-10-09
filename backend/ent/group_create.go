@@ -718,6 +718,20 @@ func (_c *GroupCreate) SetNillableForceOpenaiFast(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetAccountIntelligenceEnabled sets the "account_intelligence_enabled" field.
+func (_c *GroupCreate) SetAccountIntelligenceEnabled(v bool) *GroupCreate {
+	_c.mutation.SetAccountIntelligenceEnabled(v)
+	return _c
+}
+
+// SetNillableAccountIntelligenceEnabled sets the "account_intelligence_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableAccountIntelligenceEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetAccountIntelligenceEnabled(*v)
+	}
+	return _c
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_c *GroupCreate) SetFreeOpenaiFast(v bool) *GroupCreate {
 	_c.mutation.SetFreeOpenaiFast(v)
@@ -1155,6 +1169,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultForceOpenaiFast
 		_c.mutation.SetForceOpenaiFast(v)
 	}
+	if _, ok := _c.mutation.AccountIntelligenceEnabled(); !ok {
+		v := group.DefaultAccountIntelligenceEnabled
+		_c.mutation.SetAccountIntelligenceEnabled(v)
+	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		v := group.DefaultFreeOpenaiFast
 		_c.mutation.SetFreeOpenaiFast(v)
@@ -1360,6 +1378,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
 		return &ValidationError{Name: "force_openai_fast", err: errors.New(`ent: missing required field "Group.force_openai_fast"`)}
+	}
+	if _, ok := _c.mutation.AccountIntelligenceEnabled(); !ok {
+		return &ValidationError{Name: "account_intelligence_enabled", err: errors.New(`ent: missing required field "Group.account_intelligence_enabled"`)}
 	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
@@ -1652,6 +1673,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
 		_node.ForceOpenaiFast = value
+	}
+	if value, ok := _c.mutation.AccountIntelligenceEnabled(); ok {
+		_spec.SetField(group.FieldAccountIntelligenceEnabled, field.TypeBool, value)
+		_node.AccountIntelligenceEnabled = value
 	}
 	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
@@ -2732,6 +2757,18 @@ func (u *GroupUpsert) SetForceOpenaiFast(v bool) *GroupUpsert {
 // UpdateForceOpenaiFast sets the "force_openai_fast" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateForceOpenaiFast() *GroupUpsert {
 	u.SetExcluded(group.FieldForceOpenaiFast)
+	return u
+}
+
+// SetAccountIntelligenceEnabled sets the "account_intelligence_enabled" field.
+func (u *GroupUpsert) SetAccountIntelligenceEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldAccountIntelligenceEnabled, v)
+	return u
+}
+
+// UpdateAccountIntelligenceEnabled sets the "account_intelligence_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateAccountIntelligenceEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldAccountIntelligenceEnabled)
 	return u
 }
 
@@ -3981,6 +4018,20 @@ func (u *GroupUpsertOne) SetForceOpenaiFast(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateForceOpenaiFast() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateForceOpenaiFast()
+	})
+}
+
+// SetAccountIntelligenceEnabled sets the "account_intelligence_enabled" field.
+func (u *GroupUpsertOne) SetAccountIntelligenceEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAccountIntelligenceEnabled(v)
+	})
+}
+
+// UpdateAccountIntelligenceEnabled sets the "account_intelligence_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateAccountIntelligenceEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAccountIntelligenceEnabled()
 	})
 }
 
@@ -5427,6 +5478,20 @@ func (u *GroupUpsertBulk) SetForceOpenaiFast(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateForceOpenaiFast() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateForceOpenaiFast()
+	})
+}
+
+// SetAccountIntelligenceEnabled sets the "account_intelligence_enabled" field.
+func (u *GroupUpsertBulk) SetAccountIntelligenceEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetAccountIntelligenceEnabled(v)
+	})
+}
+
+// UpdateAccountIntelligenceEnabled sets the "account_intelligence_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateAccountIntelligenceEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateAccountIntelligenceEnabled()
 	})
 }
 

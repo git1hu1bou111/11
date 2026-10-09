@@ -1261,6 +1261,10 @@ export default {
         unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
       },
+      accountIntelligence: {
+        title: 'Per-account intelligence monitoring',
+        hint: 'OpenAI groups only. Active accounts are checked each minute, up to 16 per round; overdue accounts are prioritized. Probes consume upstream usage.'
+      },
       openaiFast: {
         title: 'OpenAI Fast mode',
         force: 'Force Fast (priority)',

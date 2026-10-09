@@ -23,7 +23,11 @@ type channelMonitorV2GroupAuthorizer interface {
 }
 
 func NewChannelMonitorV2Handler(svc *service.ChannelMonitorV2Service, apiKeyService *service.APIKeyService) *ChannelMonitorV2Handler {
-	return &ChannelMonitorV2Handler{service: svc, apiKeyService: apiKeyService}
+	h := &ChannelMonitorV2Handler{service: svc}
+	if apiKeyService != nil {
+		h.apiKeyService = apiKeyService
+	}
+	return h
 }
 
 // channelMonitorV2IsAdmin is true when the request already passed admin auth
@@ -190,6 +194,9 @@ func (h *ChannelMonitorV2Handler) users(c *gin.Context, admin bool) {
 	response.Success(c, result)
 }
 
+// scopeFilter applies the authenticated user's server-derived group scope to
+// every read endpoint. Administrators retain the complete configured scope;
+// ordinary viewers fail closed when the authorization dependency is absent.
 func (h *ChannelMonitorV2Handler) scopeFilter(c *gin.Context, filter *service.ChannelMonitorV2Filter, admin bool) bool {
 	if admin {
 		return true

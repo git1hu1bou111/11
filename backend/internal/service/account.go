@@ -192,7 +192,10 @@ func (a *Account) IsSchedulable() bool {
 	if a.RateLimitResetAt != nil && now.Before(*a.RateLimitResetAt) {
 		return false
 	}
-	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
+	// Only known legacy transient failures may bypass an old quarantine.
+	// Explicit payment, credential and administrator cooldowns remain effective.
+	legacyGrokTransient := a.Platform == PlatformGrok && isLegacyGrokTransientQuarantine(a.TempUnschedulableReason)
+	if !legacyGrokTransient && a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
 		return false
 	}
 	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {

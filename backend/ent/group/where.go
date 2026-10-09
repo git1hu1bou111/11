@@ -295,6 +295,11 @@ func ForceOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldForceOpenaiFast, v))
 }
 
+// AccountIntelligenceEnabled applies equality check predicate on the "account_intelligence_enabled" field. It's identical to AccountIntelligenceEnabledEQ.
+func AccountIntelligenceEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAccountIntelligenceEnabled, v))
+}
+
 // FreeOpenaiFast applies equality check predicate on the "free_openai_fast" field. It's identical to FreeOpenaiFastEQ.
 func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
@@ -2293,6 +2298,16 @@ func ForceOpenaiFastEQ(v bool) predicate.Group {
 // ForceOpenaiFastNEQ applies the NEQ predicate on the "force_openai_fast" field.
 func ForceOpenaiFastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldForceOpenaiFast, v))
+}
+
+// AccountIntelligenceEnabledEQ applies the EQ predicate on the "account_intelligence_enabled" field.
+func AccountIntelligenceEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldAccountIntelligenceEnabled, v))
+}
+
+// AccountIntelligenceEnabledNEQ applies the NEQ predicate on the "account_intelligence_enabled" field.
+func AccountIntelligenceEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldAccountIntelligenceEnabled, v))
 }
 
 // FreeOpenaiFastEQ applies the EQ predicate on the "free_openai_fast" field.

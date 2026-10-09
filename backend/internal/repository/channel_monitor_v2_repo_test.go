@@ -286,9 +286,16 @@ func TestChannelMonitorV2ErrorAggregationCountsFinalUserErrorsOnly(t *testing.T)
 	require.Contains(t, query, "where bucket_start >= $1 and bucket_start < $2")
 	require.Contains(t, query, "upstream_affected_requests")
 	require.Contains(t, query, "jsonb_array_length(current_error.upstream_errors) > 0")
+	require.Contains(t, query, "current_error.stream is true")
+	require.Contains(t, query, "current_error.inbound_endpoint, current_error.request_path")
 	// request_id dedup must be time-bounded (no full-history scan).
 	require.Contains(t, query, "interval '90 minutes'")
-	require.Contains(t, query, "current_error.created_at >= $1 - interval '90 minutes'")
+	require.Contains(t, query, "e.created_at >= $1 - interval '90 minutes'")
+	// The candidate request IDs must be joined, not checked with an IN subquery
+	// for every error row; the latter caused bootstrap timeouts on large logs.
+	require.Contains(t, query, "inner join candidate_ids c on c.request_id = e.request_id")
+	require.Contains(t, query, "union all")
+	require.NotContains(t, query, "request_id in (select request_id from candidate_ids)")
 }
 
 func TestChannelMonitorV2ErrorAggregationResolvesCompositePlatform(t *testing.T) {

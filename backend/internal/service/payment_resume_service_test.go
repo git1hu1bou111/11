@@ -81,12 +81,28 @@ func TestNormalizePaymentSource(t *testing.T) {
 func TestCanonicalizeReturnURL(t *testing.T) {
 	t.Parallel()
 
+	// query 与 fragment 都被剥离：用户 query 会被带进下单签名串，是签名复用伪造
+	// 回调的注入源（issue #7881），回跳 query 由服务端 buildPaymentReturnURL 追加。
 	got, err := CanonicalizeReturnURL("https://example.com/payment/result?b=2#a", "example.com", "")
 	if err != nil {
 		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
 	}
-	if got != "https://example.com/payment/result?b=2" {
-		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://example.com/payment/result?b=2")
+	if got != "https://example.com/payment/result" {
+		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://example.com/payment/result")
+	}
+}
+
+func TestCanonicalizeReturnURLStripsInjectedTradeStatus(t *testing.T) {
+	t.Parallel()
+
+	// 攻击载荷形态：借 return_url 注入 trade_status，使下单签名可被复用为成功回调。
+	got, err := CanonicalizeReturnURL(
+		"https://example.com/payment/result?trade_status=TRADE_SUCCESS&x=1", "example.com", "")
+	if err != nil {
+		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
+	}
+	if got != "https://example.com/payment/result" {
+		t.Fatalf("injected query must be stripped, got %q", got)
 	}
 }
 
@@ -109,6 +125,7 @@ func TestCanonicalizeReturnURLRejectsExternalHost(t *testing.T) {
 func TestCanonicalizeReturnURLAllowsConfiguredFrontendHost(t *testing.T) {
 	t.Parallel()
 
+	// 跨域前端（app 站调 api 站）在允许列表里，query 仍被剥离（注入源见上）。
 	got, err := CanonicalizeReturnURL(
 		"https://app.example.com/payment/result?from=checkout",
 		"api.example.com",
@@ -117,8 +134,8 @@ func TestCanonicalizeReturnURLAllowsConfiguredFrontendHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
 	}
-	if got != "https://app.example.com/payment/result?from=checkout" {
-		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://app.example.com/payment/result?from=checkout")
+	if got != "https://app.example.com/payment/result" {
+		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://app.example.com/payment/result")
 	}
 }
 
