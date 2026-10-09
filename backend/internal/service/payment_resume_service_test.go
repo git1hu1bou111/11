@@ -134,6 +134,7 @@ func TestCanonicalizeReturnURLAllowsConfiguredFrontendHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CanonicalizeReturnURL returned error: %v", err)
 	}
+	// 主机白名单照常生效，但客户端 query 一律剥离（issue #7881 签名注入）。
 	if got != "https://app.example.com/payment/result" {
 		t.Fatalf("CanonicalizeReturnURL = %q, want %q", got, "https://app.example.com/payment/result")
 	}
